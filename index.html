@@ -243,6 +243,108 @@
   .tabs button.active { color: var(--paper); border-bottom-color: var(--coral); }
   .tabs button:hover:not(.active) { color: var(--paper-dim); }
 
+  /* ---- Calendar view ---- */
+  .calendar {
+    background: var(--board-hi);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 18px;
+  }
+
+  .cal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .cal-title {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 17px;
+    color: var(--paper);
+  }
+
+  .cal-nav {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--paper);
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+  }
+
+  .cal-nav:hover { background: rgba(255,255,255,0.07); }
+
+  .cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+  }
+
+  .cal-day {
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--paper-dim);
+    cursor: pointer;
+    position: relative;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .cal-day.empty { visibility: hidden; cursor: default; }
+  .cal-day.today { border: 1px solid var(--coral); }
+  .cal-day.selected { background: var(--coral); color: #1C1A17; font-weight: 700; }
+  .cal-day:hover:not(.empty):not(.selected) { background: rgba(255,255,255,0.08); }
+
+  .cal-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--amber);
+    margin-top: 2px;
+  }
+
+  .cal-day.selected .cal-dot { background: #1C1A17; }
+
+  .cal-day-list {
+    margin-top: 14px;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+
+  .cal-day-list-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+
+  .cal-empty-note {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 4px 0;
+  }
+
   /* ---- List / notes ---- */
   .list { display: flex; flex-direction: column; gap: 10px; }
 
@@ -436,6 +538,20 @@
     <button class="active" data-filter="active">Aktivno</button>
     <button data-filter="done">Opravljeno</button>
     <button data-filter="all">Vse</button>
+    <button data-filter="calendar">Koledar</button>
+  </div>
+
+  <div class="calendar" id="calendarView" style="display:none;">
+    <div class="cal-header">
+      <button id="calPrev" class="cal-nav" aria-label="Prejšnji mesec">‹</button>
+      <div class="cal-title" id="calTitle"></div>
+      <button id="calNext" class="cal-nav" aria-label="Naslednji mesec">›</button>
+    </div>
+    <div class="cal-weekdays">
+      <span>Pon</span><span>Tor</span><span>Sre</span><span>Čet</span><span>Pet</span><span>Sob</span><span>Ned</span>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-day-list" id="calDayList"></div>
   </div>
 
   <div class="list" id="list"></div>
@@ -700,6 +816,15 @@
 
   /* ---------- Render ---------- */
   function render() {
+    if (filter === 'calendar') {
+      listEl.style.display = 'none';
+      calendarViewEl.style.display = 'block';
+      renderCalendar();
+      return;
+    }
+    listEl.style.display = '';
+    calendarViewEl.style.display = 'none';
+
     let filtered = items;
     if (filter === 'active') filtered = items.filter(i => !i.done);
     if (filter === 'done') filtered = items.filter(i => i.done);
@@ -721,57 +846,61 @@
     }
 
     filtered.forEach(item => {
-      const note = document.createElement('div');
-      note.className = 'note' + (item.done ? ' done' : '');
-
-      const pin = document.createElement('button');
-      pin.className = 'pin';
-      pin.setAttribute('aria-label', item.done ? 'Označi kot neopravljeno' : 'Označi kot opravljeno');
-      pin.onclick = () => toggleItem(item.id);
-
-      const body = document.createElement('div');
-      body.className = 'note-body';
-
-      const titleEl = document.createElement('div');
-      titleEl.className = 'note-title';
-      titleEl.textContent = item.title;
-      body.appendChild(titleEl);
-
-      if (item.topics) {
-        const topicsEl = document.createElement('div');
-        topicsEl.className = 'note-topics';
-        topicsEl.textContent = item.topics;
-        body.appendChild(topicsEl);
-      }
-
-      const meta = document.createElement('div');
-      meta.className = 'note-meta';
-
-      if (item.dueLabel) {
-        const badge = document.createElement('span');
-        badge.className = 'due-badge';
-        badge.textContent = '📅 ' + item.dueLabel;
-        meta.appendChild(badge);
-      }
-
-      const timeEl = document.createElement('span');
-      timeEl.className = 'note-time';
-      timeEl.textContent = (item.done && item.completedAt) ? completedOn(item.completedAt) : timeAgo(item.createdAt);
-      meta.appendChild(timeEl);
-
-      body.appendChild(meta);
-
-      const del = document.createElement('button');
-      del.className = 'del';
-      del.setAttribute('aria-label', 'Izbriši');
-      del.textContent = '✕';
-      del.onclick = () => deleteItem(item.id);
-
-      note.appendChild(pin);
-      note.appendChild(body);
-      note.appendChild(del);
-      listEl.appendChild(note);
+      listEl.appendChild(buildNoteEl(item));
     });
+  }
+
+  function buildNoteEl(item) {
+    const note = document.createElement('div');
+    note.className = 'note' + (item.done ? ' done' : '');
+
+    const pin = document.createElement('button');
+    pin.className = 'pin';
+    pin.setAttribute('aria-label', item.done ? 'Označi kot neopravljeno' : 'Označi kot opravljeno');
+    pin.onclick = () => toggleItem(item.id);
+
+    const body = document.createElement('div');
+    body.className = 'note-body';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'note-title';
+    titleEl.textContent = item.title;
+    body.appendChild(titleEl);
+
+    if (item.topics) {
+      const topicsEl = document.createElement('div');
+      topicsEl.className = 'note-topics';
+      topicsEl.textContent = item.topics;
+      body.appendChild(topicsEl);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'note-meta';
+
+    if (item.dueLabel) {
+      const badge = document.createElement('span');
+      badge.className = 'due-badge';
+      badge.textContent = '📅 ' + item.dueLabel;
+      meta.appendChild(badge);
+    }
+
+    const timeEl = document.createElement('span');
+    timeEl.className = 'note-time';
+    timeEl.textContent = (item.done && item.completedAt) ? completedOn(item.completedAt) : timeAgo(item.createdAt);
+    meta.appendChild(timeEl);
+
+    body.appendChild(meta);
+
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.setAttribute('aria-label', 'Izbriši');
+    del.textContent = '✕';
+    del.onclick = () => deleteItem(item.id);
+
+    note.appendChild(pin);
+    note.appendChild(body);
+    note.appendChild(del);
+    return note;
   }
 
   /* ---------- Add flow ---------- */
@@ -870,6 +999,122 @@
       });
     });
   }
+
+  /* ---------- Calendar view ---------- */
+  const calendarViewEl = document.getElementById('calendarView');
+  const calGridEl = document.getElementById('calGrid');
+  const calTitleEl = document.getElementById('calTitle');
+  const calDayListEl = document.getElementById('calDayList');
+  const calPrevBtn = document.getElementById('calPrev');
+  const calNextBtn = document.getElementById('calNext');
+
+  const MONTH_NAMES = ['januar','februar','marec','april','maj','junij','julij','avgust','september','oktober','november','december'];
+
+  let calMonthDate = new Date();
+  calMonthDate.setDate(1);
+  calMonthDate.setHours(0,0,0,0);
+  let calSelectedDate = new Date();
+  calSelectedDate.setHours(0,0,0,0);
+
+  function dateKey(d) {
+    return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
+  }
+
+  function itemDueDateObj(item) {
+    if (!item.dueSort) return null;
+    const d = new Date(item.dueSort);
+    d.setHours(0,0,0,0);
+    return d;
+  }
+
+  function renderCalendar() {
+    const year = calMonthDate.getFullYear();
+    const month = calMonthDate.getMonth();
+    calTitleEl.textContent = MONTH_NAMES[month] + ' ' + year;
+
+    // Map of dateKey -> items due that day (only active items with a resolved date)
+    const itemsByDay = {};
+    items.forEach(it => {
+      if (it.done) return;
+      const d = itemDueDateObj(it);
+      if (!d) return;
+      const key = dateKey(d);
+      if (!itemsByDay[key]) itemsByDay[key] = [];
+      itemsByDay[key].push(it);
+    });
+
+    const firstOfMonth = new Date(year, month, 1);
+    const startOffset = (firstOfMonth.getDay() === 0) ? 6 : firstOfMonth.getDay() - 1; // Monday-based
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    calGridEl.innerHTML = '';
+
+    for (let i = 0; i < startOffset; i++) {
+      const empty = document.createElement('div');
+      empty.className = 'cal-day empty';
+      calGridEl.appendChild(empty);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month, day);
+      const key = dateKey(d);
+      const cell = document.createElement('div');
+      cell.className = 'cal-day';
+      if (d.getTime() === today.getTime()) cell.classList.add('today');
+      if (d.getTime() === calSelectedDate.getTime()) cell.classList.add('selected');
+
+      const num = document.createElement('span');
+      num.textContent = day;
+      cell.appendChild(num);
+
+      if (itemsByDay[key]) {
+        const dot = document.createElement('div');
+        dot.className = 'cal-dot';
+        cell.appendChild(dot);
+      }
+
+      cell.addEventListener('click', () => {
+        calSelectedDate = d;
+        renderCalendar();
+      });
+
+      calGridEl.appendChild(cell);
+    }
+
+    // Day list below grid
+    const selectedKey = dateKey(calSelectedDate);
+    const dayItems = itemsByDay[selectedKey] || [];
+    const dayLabel = calSelectedDate.toLocaleDateString('sl-SI', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    calDayListEl.innerHTML = '';
+    const titleEl = document.createElement('div');
+    titleEl.className = 'cal-day-list-title';
+    titleEl.textContent = dayLabel;
+    calDayListEl.appendChild(titleEl);
+
+    if (dayItems.length === 0) {
+      const note = document.createElement('div');
+      note.className = 'cal-empty-note';
+      note.textContent = 'Ni akcij s tem rokom.';
+      calDayListEl.appendChild(note);
+    } else {
+      dayItems.forEach(item => {
+        calDayListEl.appendChild(buildNoteEl(item));
+      });
+    }
+  }
+
+  calPrevBtn.addEventListener('click', () => {
+    calMonthDate.setMonth(calMonthDate.getMonth() - 1);
+    renderCalendar();
+  });
+
+  calNextBtn.addEventListener('click', () => {
+    calMonthDate.setMonth(calMonthDate.getMonth() + 1);
+    renderCalendar();
+  });
 
   /* ---------- Tabs ---------- */
   tabs.forEach(btn => {
